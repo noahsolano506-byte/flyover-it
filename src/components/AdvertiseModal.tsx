@@ -1,11 +1,11 @@
 import { useEffect, useId, useRef, useState } from 'react';
 
-const EMBED_SRC = 'https://flyoverit.io';
+const EMBED_SRC = 'https://flyoverit.apps.grok.bot';
 
-export const EMBED_SNIPPET = `<!-- FlyOverIt.io embed -->
+export const EMBED_SNIPPET = `<!-- FlyOverIt embed -->
 <iframe
   src="${EMBED_SRC}"
-  title="FlyOverIt.io — hill launch plane game"
+  title="FlyOverIt — hill launch plane game"
   width="100%"
   height="560"
   style="border:0;border-radius:8px;max-width:960px;aspect-ratio:16/10;height:auto;min-height:420px;background:#063642;"
