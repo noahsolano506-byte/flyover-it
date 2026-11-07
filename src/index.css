@@ -490,6 +490,14 @@ button:disabled {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
+}
+
+.game-top-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem 0.9rem;
 }
 
 .game-mode-tag {
@@ -568,6 +576,85 @@ button:disabled {
   transition: width 0.1s linear;
 }
 
+.hud-boost-flag {
+  align-self: center;
+  margin-left: auto;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid rgba(240, 180, 41, 0.55);
+  border-radius: 3px;
+  background: rgba(240, 180, 41, 0.18);
+  color: #ffe6a0;
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  animation: boost-pulse 0.7s ease-in-out infinite alternate;
+}
+
+.game-toast {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  transform: translate(-50%, -50%);
+  padding: 0.55rem 1rem;
+  border-radius: 6px;
+  background: rgba(6, 34, 42, 0.82);
+  border: 1px solid rgba(240, 180, 41, 0.45);
+  color: #ffe6a0;
+  font-family: var(--font-display);
+  font-size: clamp(1.05rem, 3vw, 1.35rem);
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  animation: toast-pop 0.35s ease-out;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.game-pause-veil {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 0.35rem;
+  background: rgba(4, 24, 30, 0.55);
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+  text-align: center;
+}
+
+.game-pause-veil p {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+}
+
+.game-pause-veil span {
+  color: rgba(232, 244, 246, 0.7);
+  font-size: 0.9rem;
+}
+
+.game-stage.is-paused .game-canvas {
+  filter: saturate(0.75);
+}
+
+@keyframes boost-pulse {
+  from {
+    opacity: 0.7;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes toast-pop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -40%) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
 .game-controls {
   display: flex;
   flex-direction: column;
@@ -636,6 +723,12 @@ button:disabled {
   font-size: 1.15rem;
 }
 
+.result-bits {
+  margin: 0 0 0.45rem;
+  color: rgba(240, 180, 41, 0.9);
+  font-size: 0.88rem;
+}
+
 .result-best {
   margin: 0 0 1.25rem;
   color: rgba(232, 244, 246, 0.55);
@@ -646,6 +739,12 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+.result-keys {
+  margin: 0.75rem 0 0;
+  font-size: 0.8rem;
+  color: rgba(232, 244, 246, 0.45);
 }
 
 /* ——— Motion ——— */

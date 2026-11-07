@@ -1,5 +1,11 @@
 import { statsFromUpgrades } from './upgrades';
-import type { FlightMode, FlightResult, Obstacle, UpgradeId } from './types';
+import type {
+  BoostRing,
+  FlightMode,
+  FlightResult,
+  Obstacle,
+  UpgradeId,
+} from './types';
 
 export interface EngineInput {
   up: boolean;
@@ -9,6 +15,16 @@ export interface EngineInput {
 
 export interface EngineCheats {
   turtleShell?: boolean;
+}
+
+export interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  color: string;
 }
 
 export interface EngineState {
@@ -28,13 +44,22 @@ export interface EngineState {
   hillY: number;
   groundY: number;
   obstacles: Obstacle[];
+  rings: BoostRing[];
   mode: FlightMode;
   crashed: boolean;
   time: number;
+  airTime: number;
+  perfectLaunch: boolean;
+  boosts: number;
+  boostTimer: number;
+  shake: number;
   trail: { x: number; y: number }[];
+  particles: Particle[];
+  lastMilestone: number;
 }
 
 let nextObstacleId = 1;
+let nextRingId = 1;
 
 export function createEngine(
   upgrades: Record<UpgradeId, number>,
@@ -62,10 +87,18 @@ export function createEngine(
     hillY,
     groundY,
     obstacles: [],
+    rings: [],
     mode,
     crashed: false,
     time: 0,
+    airTime: 0,
+    perfectLaunch: false,
+    boosts: 0,
+    boostTimer: 0,
+    shake: 0,
     trail: [],
+    particles: [],
+    lastMilestone: 0,
   };
 }
 
@@ -73,6 +106,22 @@ export function startCharge(state: EngineState): void {
   if (state.phase === 'ready') {
     state.phase = 'charging';
     state.charge = 0.15;
+  }
+}
+
+function burstParticles(state: EngineState, x: number, y: number, n: number): void {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const sp = 40 + Math.random() * 120;
+    state.particles.push({
+      x,
+      y,
+      vx: Math.cos(a) * sp,
+      vy: Math.sin(a) * sp,
+      life: 0.35 + Math.random() * 0.45,
+      maxLife: 0.8,
+      color: Math.random() > 0.4 ? '#F0B429' : '#E8F4F6',
+    });
   }
 }
 
@@ -86,7 +135,24 @@ export function releaseLaunch(
   const angle = -0.55 - state.charge * 0.25;
   state.vx = Math.cos(angle) * stats.thrust * 2.8 * power;
   state.vy = Math.sin(angle) * stats.thrust * 2.8 * power;
+  state.perfectLaunch = state.charge >= 0.92;
   state.phase = 'flying';
+  state.shake = state.perfectLaunch ? 0.45 : 0.28;
+  burstParticles(state, state.planeX, state.planeY, state.perfectLaunch ? 28 : 14);
+}
+
+function spawnRing(state: EngineState, canvasW: number): void {
+  if (state.distance < 40) return;
+  const minY = 50;
+  const maxY = state.groundY - 90;
+  state.rings.push({
+    id: nextRingId++,
+    x: canvasW + 50 + Math.random() * 60,
+    y: minY + Math.random() * (maxY - minY),
+    r: 22,
+    collected: false,
+    spin: Math.random() * Math.PI * 2,
+  });
 }
 
 function spawnObstacle(state: EngineState, canvasW: number): void {
@@ -148,19 +214,28 @@ export function tick(
     return null;
   }
 
-  if (state.phase !== 'flying') return null;
+  if (state.phase !== 'flying') {
+    state.shake = Math.max(0, state.shake - dt * 2.2);
+    return null;
+  }
+
+  state.airTime += dt;
+  state.boostTimer = Math.max(0, state.boostTimer - dt);
+  state.shake = Math.max(0, state.shake - dt * 2.2);
 
   // Steering
   if (input.up) state.vy -= stats.climbRate * 18 * dt;
   if (input.down) state.vy += stats.climbRate * 18 * dt;
 
+  const thrustBoost = state.boostTimer > 0 ? 1.55 : 1;
+
   // Thrust while fuel remains (turtle shell never runs dry)
   if (shell) {
     state.fuel = state.fuelMax;
-    state.vx += stats.thrust * 0.35 * dt;
+    state.vx += stats.thrust * 0.35 * thrustBoost * dt;
   } else if (state.fuel > 0) {
     state.fuel = Math.max(0, state.fuel - dt);
-    state.vx += stats.thrust * 0.35 * dt;
+    state.vx += stats.thrust * 0.35 * thrustBoost * dt;
   } else {
     state.vx *= 1 - 0.08 * dt;
     state.vy += 28 * dt; // gravity when out of fuel
@@ -168,7 +243,8 @@ export function tick(
 
   // Mild gravity always
   state.vy += 9 * dt;
-  state.vx = Math.min(stats.maxSpeed, Math.max(1.2, state.vx));
+  const speedCap = stats.maxSpeed * (state.boostTimer > 0 ? 1.35 : 1);
+  state.vx = Math.min(speedCap, Math.max(1.2, state.vx));
   state.vy = Math.max(-5.5, Math.min(6.5, state.vy));
 
   // Move plane mostly fixed in X; scroll world
@@ -195,6 +271,12 @@ export function tick(
     }
   }
 
+  // Boost rings (both modes)
+  const ringChance = 0.008 + Math.min(0.02, state.distance / 10000);
+  if (Math.random() < ringChance * (dt * 60)) {
+    spawnRing(state, canvasW);
+  }
+
   for (const o of state.obstacles) {
     o.x -= scroll;
     o.y += o.vy * 55 * dt;
@@ -204,6 +286,36 @@ export function tick(
     }
   }
   state.obstacles = state.obstacles.filter((o) => o.x > -100 && !o.hit);
+
+  for (const ring of state.rings) {
+    ring.x -= scroll;
+    ring.spin += dt * 3.2;
+  }
+  state.rings = state.rings.filter((r) => r.x > -80 && !r.collected);
+
+  for (const ring of state.rings) {
+    if (ring.collected) continue;
+    const dx = state.planeX - ring.x;
+    const dy = state.planeY - ring.y;
+    if (dx * dx + dy * dy < (ring.r + 18) * (ring.r + 18)) {
+      ring.collected = true;
+      state.boosts += 1;
+      state.boostTimer = Math.max(state.boostTimer, 2.2);
+      state.fuel = Math.min(state.fuelMax, state.fuel + state.fuelMax * 0.28);
+      state.shake = Math.max(state.shake, 0.18);
+      burstParticles(state, ring.x, ring.y, 16);
+    }
+  }
+
+  // Particles
+  for (const p of state.particles) {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 40 * dt;
+    p.life -= dt;
+    p.x -= scroll * 0.4;
+  }
+  state.particles = state.particles.filter((p) => p.life > 0);
 
   state.invuln = Math.max(0, state.invuln - dt);
   if (shell) state.invuln = Math.max(state.invuln, 1);
@@ -237,6 +349,7 @@ export function tick(
 
     // Hit without block
     state.crashed = true;
+    state.shake = 0.55;
     state.phase = 'ended';
     return finish(state, upgrades);
   }
@@ -247,6 +360,7 @@ export function tick(
     const hardHit = !shell && state.vy > 4.2;
     if (hardHit) {
       state.crashed = true;
+      state.shake = 0.6;
       state.phase = 'ended';
       return finish(state, upgrades);
     }
@@ -283,7 +397,12 @@ function finish(
   const base = dist * 0.35;
   const modeBonus = state.mode === 'record' ? 1.45 : 1;
   const crashPenalty = state.crashed ? 0.65 : 1;
-  const earnings = Math.floor(base * stats.moneyMult * modeBonus * crashPenalty);
+  const perfectBonus = state.perfectLaunch ? 1.12 : 1;
+  const boostBonus = 1 + state.boosts * 0.06;
+  const airBonus = 1 + Math.min(0.25, state.airTime * 0.01);
+  const earnings = Math.floor(
+    base * stats.moneyMult * modeBonus * crashPenalty * perfectBonus * boostBonus * airBonus,
+  );
 
   return {
     distance: dist,
@@ -292,6 +411,9 @@ function finish(
     isRecord: false,
     crashed: state.crashed,
     blocked: state.blockedCount,
+    perfectLaunch: state.perfectLaunch,
+    boosts: state.boosts,
+    airTime: Math.round(state.airTime * 10) / 10,
   };
 }
 
@@ -302,6 +424,12 @@ export function drawScene(
   h: number,
   chargeHeld: boolean,
 ): void {
+  ctx.save();
+  if (state.shake > 0) {
+    const mag = state.shake * 10;
+    ctx.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
+  }
+
   // Sky gradient
   const sky = ctx.createLinearGradient(0, 0, 0, h);
   sky.addColorStop(0, '#063642');
@@ -384,9 +512,32 @@ export function drawScene(
     drawObstacle(ctx, o);
   }
 
+  // Boost rings
+  for (const ring of state.rings) {
+    if (ring.collected) continue;
+    drawBoostRing(ctx, ring);
+  }
+
+  // Particles
+  for (const p of state.particles) {
+    const a = Math.max(0, p.life / p.maxLife);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 2 + 3 * a, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
   // Plane
   if (state.phase !== 'ended' || state.time % 0.2 < 0.1) {
-    drawPlane(ctx, state.planeX, state.planeY, state.vy, state.invuln > 0);
+    drawPlane(
+      ctx,
+      state.planeX,
+      state.planeY,
+      state.vy,
+      state.invuln > 0 || state.boostTimer > 0,
+    );
   }
 
   // Charge meter
@@ -403,14 +554,34 @@ export function drawScene(
     ctx.strokeRect(bx, by, barW, barH);
   }
 
-  // Block flash
-  if (state.invuln > 0.3) {
-    ctx.strokeStyle = `rgba(240, 180, 41, ${state.invuln})`;
+  // Block / boost flash
+  if (state.invuln > 0.3 || state.boostTimer > 0) {
+    const glow = state.boostTimer > 0 ? 0.55 + state.boostTimer * 0.1 : state.invuln;
+    ctx.strokeStyle = `rgba(240, 180, 41, ${Math.min(1, glow)})`;
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(state.planeX, state.planeY, 34, 0, Math.PI * 2);
     ctx.stroke();
   }
+
+  ctx.restore();
+}
+
+function drawBoostRing(ctx: CanvasRenderingContext2D, ring: BoostRing): void {
+  ctx.save();
+  ctx.translate(ring.x, ring.y);
+  ctx.rotate(ring.spin);
+  ctx.strokeStyle = 'rgba(240, 180, 41, 0.95)';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, ring.r, ring.r * 0.42, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(232, 244, 246, 0.55)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, ring.r * 0.7, ring.r * 0.28, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function drawHills(

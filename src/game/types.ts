@@ -36,6 +36,15 @@ export interface Obstacle {
   hit: boolean;
 }
 
+export interface BoostRing {
+  id: number;
+  x: number;
+  y: number;
+  r: number;
+  collected: boolean;
+  spin: number;
+}
+
 export interface FlightResult {
   distance: number;
   earnings: number;
@@ -43,4 +52,7 @@ export interface FlightResult {
   isRecord: boolean;
   crashed: boolean;
   blocked: number;
+  perfectLaunch: boolean;
+  boosts: number;
+  airTime: number;
 }

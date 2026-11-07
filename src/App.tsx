@@ -78,6 +78,12 @@ export default function App() {
     setScreen('play');
   };
 
+  const restartFlight = () => {
+    setResult(null);
+    setFlightKey((k) => k + 1);
+    setScreen('play');
+  };
+
   return (
     <div className="app">
       <CheatPad
@@ -102,7 +108,8 @@ export default function App() {
               <h2 id="hangar-title">Hangar</h2>
               <p className="hangar-lead">
                 Casual hops build your bank. Record runs pay more — and throw obstacles
-                you must dodge or block.
+                you must dodge or block. Thread gold boost rings for fuel and speed, then
+                restart any run with R.
               </p>
               <div className="hangar-stats">
                 <div>
@@ -173,6 +180,7 @@ export default function App() {
             upgrades={save.upgrades}
             cheats={cheats}
             onFinished={applyResult}
+            onRestart={restartFlight}
             onExit={() => {
               setResult(null);
               setScreen('landing');
@@ -183,7 +191,7 @@ export default function App() {
               result={result}
               bestDistance={save.bestDistance}
               onShop={() => setScreen('shop')}
-              onAgain={() => startFlight(mode)}
+              onAgain={restartFlight}
               onHangar={() => {
                 setResult(null);
                 setScreen('landing');
