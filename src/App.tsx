@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AdvertiseModal } from './components/AdvertiseModal';
+import { CheatPad, type CheatFlags } from './components/CheatPad';
 import { GameCanvas } from './components/GameCanvas';
 import { Landing } from './components/Landing';
 import { ResultCard } from './components/ResultCard';
@@ -16,6 +17,8 @@ export default function App() {
   const [result, setResult] = useState<FlightResult | null>(null);
   const [flightKey, setFlightKey] = useState(0);
   const [advertiseOpen, setAdvertiseOpen] = useState(false);
+  const [cheatOpen, setCheatOpen] = useState(false);
+  const [cheats, setCheats] = useState<CheatFlags>({ turtleShell: false });
 
   useEffect(() => {
     setSave(loadSave());
@@ -26,6 +29,17 @@ export default function App() {
     if (!hydrated) return;
     writeSave(save);
   }, [save, hydrated]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.code !== 'Digit4' && e.code !== 'Numpad4') return;
+      e.preventDefault();
+      setCheatOpen((open) => !open);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const applyResult = useCallback((r: FlightResult) => {
     setSave((prev) => {
@@ -66,6 +80,14 @@ export default function App() {
 
   return (
     <div className="app">
+      <CheatPad
+        open={cheatOpen}
+        onClose={() => setCheatOpen(false)}
+        save={save}
+        onSave={setSave}
+        cheats={cheats}
+        onCheats={setCheats}
+      />
       {screen === 'landing' && (
         <>
           <Landing
@@ -149,6 +171,7 @@ export default function App() {
             key={flightKey}
             mode={mode}
             upgrades={save.upgrades}
+            cheats={cheats}
             onFinished={applyResult}
             onExit={() => {
               setResult(null);

@@ -5,6 +5,7 @@ import {
   releaseLaunch,
   startCharge,
   tick,
+  type EngineCheats,
   type EngineInput,
   type EngineState,
 } from '../game/engine';
@@ -13,20 +14,23 @@ import type { FlightMode, FlightResult, UpgradeId } from '../game/types';
 interface Props {
   mode: FlightMode;
   upgrades: Record<UpgradeId, number>;
+  cheats?: EngineCheats;
   onFinished: (result: FlightResult) => void;
   onExit: () => void;
 }
 
-export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
+export function GameCanvas({ mode, upgrades, cheats, onFinished, onExit }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<EngineState | null>(null);
   const inputRef = useRef<EngineInput>({ up: false, down: false, block: false });
   const chargingRef = useRef(false);
   const endedRef = useRef(false);
   const upgradesRef = useRef(upgrades);
+  const cheatsRef = useRef<EngineCheats>(cheats ?? {});
   const onFinishedRef = useRef(onFinished);
   const onExitRef = useRef(onExit);
   upgradesRef.current = upgrades;
+  cheatsRef.current = cheats ?? {};
   onFinishedRef.current = onFinished;
   onExitRef.current = onExit;
 
@@ -86,6 +90,7 @@ export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
           dt,
           cssW,
           loopH,
+          cheatsRef.current,
         );
         if (result) {
           endedRef.current = true;
@@ -120,7 +125,12 @@ export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
   }, [mode]);
 
   useEffect(() => {
+    const typingTarget = (t: EventTarget | null) =>
+      t instanceof HTMLElement &&
+      Boolean(t.closest('input, textarea, select, [contenteditable=true], [role=dialog]'));
+
     const onKeyDown = (e: KeyboardEvent) => {
+      if (typingTarget(e.target)) return;
       const state = stateRef.current;
       if (!state) return;
       if (e.code === 'ArrowUp' || e.code === 'KeyW') {
@@ -144,6 +154,7 @@ export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
+      if (typingTarget(e.target)) return;
       const state = stateRef.current;
       if (!state) return;
       if (e.code === 'ArrowUp' || e.code === 'KeyW') inputRef.current.up = false;

@@ -7,6 +7,10 @@ export interface EngineInput {
   block: boolean;
 }
 
+export interface EngineCheats {
+  turtleShell?: boolean;
+}
+
 export interface EngineState {
   phase: 'ready' | 'charging' | 'flying' | 'ended';
   charge: number;
@@ -132,8 +136,10 @@ export function tick(
   dt: number,
   canvasW: number,
   canvasH: number,
+  cheats: EngineCheats = {},
 ): FlightResult | null {
   const stats = statsFromUpgrades(upgrades);
+  const shell = Boolean(cheats.turtleShell);
   state.groundY = canvasH * 0.82;
   state.time += dt;
 
@@ -148,8 +154,11 @@ export function tick(
   if (input.up) state.vy -= stats.climbRate * 18 * dt;
   if (input.down) state.vy += stats.climbRate * 18 * dt;
 
-  // Thrust while fuel remains
-  if (state.fuel > 0) {
+  // Thrust while fuel remains (turtle shell never runs dry)
+  if (shell) {
+    state.fuel = state.fuelMax;
+    state.vx += stats.thrust * 0.35 * dt;
+  } else if (state.fuel > 0) {
     state.fuel = Math.max(0, state.fuel - dt);
     state.vx += stats.thrust * 0.35 * dt;
   } else {
@@ -197,6 +206,7 @@ export function tick(
   state.obstacles = state.obstacles.filter((o) => o.x > -100 && !o.hit);
 
   state.invuln = Math.max(0, state.invuln - dt);
+  if (shell) state.invuln = Math.max(state.invuln, 1);
 
   const pw = 44;
   const ph = 22;
@@ -212,13 +222,15 @@ export function tick(
     if (o.hit) continue;
     if (!rectsOverlap(px, py, pw, ph, o.x, o.y, o.w, o.h)) continue;
 
-    if (blockedThisFrame || state.invuln > 0) {
+    if (shell || blockedThisFrame || state.invuln > 0) {
       o.hit = true;
-      if (blockedThisFrame && state.blocksLeft > 0) {
+      if (!shell && blockedThisFrame && state.blocksLeft > 0) {
         state.blocksLeft -= 1;
         state.blockedCount += 1;
         state.invuln = 0.55;
         blockedThisFrame = false;
+      } else if (shell) {
+        state.blockedCount += 1;
       }
       continue;
     }
@@ -232,7 +244,7 @@ export function tick(
   // Landing / crash on ground
   if (state.planeY + ph * 0.4 >= state.groundY) {
     state.planeY = state.groundY - ph * 0.4;
-    const hardHit = state.vy > 4.2;
+    const hardHit = !shell && state.vy > 4.2;
     if (hardHit) {
       state.crashed = true;
       state.phase = 'ended';
@@ -241,10 +253,15 @@ export function tick(
     // Skid / soft touchdown
     state.vy = Math.min(0, state.vy);
     state.vx *= 0.9;
-    if (state.vx < 1.6 || state.fuel <= 0) {
+    if (!shell && (state.vx < 1.6 || state.fuel <= 0)) {
       state.phase = 'ended';
       state.crashed = false;
       return finish(state, upgrades);
+    }
+    if (shell && state.vx < 1.6) {
+      // Bounce back up so the shell never ends a flight on the dirt
+      state.vy = -2.8;
+      state.vx = Math.max(state.vx, 2.4);
     }
   }
 

@@ -700,6 +700,123 @@ button:disabled {
   }
 }
 
+/* ——— Cheat pad ——— */
+.cheat-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(4, 24, 30, 0.6);
+  backdrop-filter: blur(4px);
+  animation: fade-in 0.2s ease-out;
+}
+
+.cheat-panel {
+  width: min(100%, 420px);
+  padding: 1.25rem 1.25rem 1.35rem;
+  background: rgba(8, 40, 48, 0.97);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  animation: rise-in 0.28s ease-out both;
+}
+
+.cheat-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.4rem;
+}
+
+.cheat-head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.2rem, 3.5vw, 1.5rem);
+  letter-spacing: -0.02em;
+}
+
+.cheat-lead {
+  margin: 0 0 0.85rem;
+  color: rgba(232, 244, 246, 0.72);
+  line-height: 1.45;
+  font-size: 0.95rem;
+}
+
+.cheat-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.cheat-input {
+  flex: 1 1 160px;
+  appearance: none;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: rgba(4, 24, 30, 0.75);
+  color: var(--foam);
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+  letter-spacing: 0.08em;
+}
+
+.cheat-input:focus {
+  outline: 2px solid rgba(240, 180, 41, 0.45);
+  outline-offset: 1px;
+}
+
+.cheat-input-bad {
+  border-color: rgba(196, 92, 74, 0.85);
+  animation: cheat-shake 0.35s ease;
+}
+
+.cheat-error {
+  margin: 0.55rem 0 0;
+  color: #e8a090;
+  font-size: 0.85rem;
+}
+
+.cheat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.cheat-hint {
+  margin: 0.85rem 0 0;
+  color: rgba(232, 244, 246, 0.55);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.cheat-flash {
+  margin: 0.65rem 0 0;
+  color: var(--gold);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+@keyframes cheat-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-5px);
+  }
+  75% {
+    transform: translateX(5px);
+  }
+}
+
+@media (max-width: 420px) {
+  .cheat-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ——— Advertise ——— */
 .advertise-fab {
   position: fixed;
