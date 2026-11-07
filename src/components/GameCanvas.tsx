@@ -5,37 +5,59 @@ import {
   releaseLaunch,
   startCharge,
   tick,
+  type EngineCheats,
   type EngineInput,
   type EngineState,
 } from '../game/engine';
 import type { FlightMode, FlightResult, UpgradeId } from '../game/types';
 
+const MILESTONES = [250, 500, 1000, 2000, 5000, 10000];
+
 interface Props {
   mode: FlightMode;
   upgrades: Record<UpgradeId, number>;
+  cheats?: EngineCheats;
   onFinished: (result: FlightResult) => void;
   onExit: () => void;
+  onRestart: () => void;
 }
 
-export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
+export function GameCanvas({
+  mode,
+  upgrades,
+  cheats,
+  onFinished,
+  onExit,
+  onRestart,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<EngineState | null>(null);
   const inputRef = useRef<EngineInput>({ up: false, down: false, block: false });
   const chargingRef = useRef(false);
   const endedRef = useRef(false);
+  const pausedRef = useRef(false);
   const upgradesRef = useRef(upgrades);
+  const cheatsRef = useRef<EngineCheats>(cheats ?? {});
   const onFinishedRef = useRef(onFinished);
   const onExitRef = useRef(onExit);
+  const onRestartRef = useRef(onRestart);
   upgradesRef.current = upgrades;
+  cheatsRef.current = cheats ?? {};
   onFinishedRef.current = onFinished;
   onExitRef.current = onExit;
+  onRestartRef.current = onRestart;
 
   const [hud, setHud] = useState({
     distance: 0,
     fuel: 1,
     blocks: 0,
+    boosts: 0,
+    boosting: false,
     phase: 'ready' as EngineState['phase'],
   });
+  const [paused, setPaused] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -62,12 +84,18 @@ export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
 
     resize();
     endedRef.current = false;
+    pausedRef.current = false;
     const cssH = canvas.clientHeight || Math.min(window.innerHeight * 0.72, 560);
     stateRef.current = createEngine(upgradesRef.current, mode, cssH);
 
     let raf = 0;
     let last = performance.now();
     let hudAcc = 0;
+
+    const showToast = (msg: string) => {
+      setToast(msg);
+      toastTimer.current = 2.2;
+    };
 
     const loop = (now: number) => {
       const dt = Math.min(0.033, (now - last) / 1000);
@@ -78,7 +106,7 @@ export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
       const cssW = canvas.clientWidth;
       const loopH = canvas.clientHeight;
 
-      if (!endedRef.current && state.phase !== 'ended') {
+      if (!endedRef.current && state.phase !== 'ended' && !pausedRef.current) {
         const result = tick(
           state,
           upgradesRef.current,
@@ -86,12 +114,26 @@ export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
           dt,
           cssW,
           loopH,
+          cheatsRef.current,
         );
+
+        for (const m of MILESTONES) {
+          if (state.distance >= m && state.lastMilestone < m) {
+            state.lastMilestone = m;
+            showToast(`${m.toLocaleString()} m!`);
+          }
+        }
+
         if (result) {
           endedRef.current = true;
           result.isRecord = false;
           onFinishedRef.current(result);
         }
+      }
+
+      if (toastTimer.current > 0) {
+        toastTimer.current -= dt;
+        if (toastTimer.current <= 0) setToast(null);
       }
 
       drawScene(ctx, state, cssW, loopH, chargingRef.current);
@@ -103,6 +145,8 @@ export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
           distance: Math.floor(state.distance),
           fuel: state.fuelMax > 0 ? state.fuel / state.fuelMax : 0,
           blocks: state.blocksLeft,
+          boosts: state.boosts,
+          boosting: state.boostTimer > 0,
           phase: state.phase,
         });
       }
@@ -120,9 +164,34 @@ export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
   }, [mode]);
 
   useEffect(() => {
+    const typingTarget = (t: EventTarget | null) =>
+      t instanceof HTMLElement &&
+      Boolean(t.closest('input, textarea, select, [contenteditable=true], [role=dialog]'));
+
     const onKeyDown = (e: KeyboardEvent) => {
+      if (typingTarget(e.target)) return;
       const state = stateRef.current;
       if (!state) return;
+
+      if (e.code === 'KeyR' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        onRestartRef.current();
+        return;
+      }
+      if (e.code === 'KeyP') {
+        e.preventDefault();
+        if (state.phase === 'flying' || state.phase === 'charging') {
+          pausedRef.current = !pausedRef.current;
+          setPaused(pausedRef.current);
+          if (pausedRef.current) {
+            inputRef.current = { up: false, down: false, block: false };
+            chargingRef.current = false;
+          }
+        }
+        return;
+      }
+      if (pausedRef.current) return;
+
       if (e.code === 'ArrowUp' || e.code === 'KeyW') {
         e.preventDefault();
         inputRef.current.up = true;
@@ -144,6 +213,8 @@ export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
+      if (typingTarget(e.target)) return;
+      if (pausedRef.current) return;
       const state = stateRef.current;
       if (!state) return;
       if (e.code === 'ArrowUp' || e.code === 'KeyW') inputRef.current.up = false;
@@ -153,6 +224,10 @@ export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
         if (state.phase === 'charging' && chargingRef.current) {
           chargingRef.current = false;
           releaseLaunch(state, upgradesRef.current);
+          if (state.perfectLaunch) {
+            setToast('Perfect launch!');
+            toastTimer.current = 2;
+          }
         }
       }
     };
@@ -166,6 +241,7 @@ export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
   }, []);
 
   const beginCharge = () => {
+    if (pausedRef.current) return;
     const state = stateRef.current;
     if (!state || state.phase !== 'ready') return;
     chargingRef.current = true;
@@ -173,24 +249,43 @@ export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
   };
 
   const endCharge = () => {
+    if (pausedRef.current) return;
     const state = stateRef.current;
     if (!state) return;
     if (state.phase === 'charging' && chargingRef.current) {
       chargingRef.current = false;
       releaseLaunch(state, upgrades);
+      if (state.perfectLaunch) {
+        setToast('Perfect launch!');
+        toastTimer.current = 2;
+      }
+    }
+  };
+
+  const togglePause = () => {
+    const state = stateRef.current;
+    if (!state) return;
+    if (state.phase !== 'flying' && state.phase !== 'charging') return;
+    pausedRef.current = !pausedRef.current;
+    setPaused(pausedRef.current);
+    if (pausedRef.current) {
+      inputRef.current = { up: false, down: false, block: false };
+      chargingRef.current = false;
     }
   };
 
   const phaseHint =
-    hud.phase === 'ready'
-      ? 'Hold launch to charge, release to fly'
-      : hud.phase === 'charging'
-        ? 'Release to launch!'
-        : hud.phase === 'flying'
-          ? mode === 'record'
-            ? 'Steer clear — tap Block to shrug a hit'
-            : 'Steer with up / down — land soft when fuel dies'
-          : 'Flight complete';
+    paused
+      ? 'Paused — press P to resume'
+      : hud.phase === 'ready'
+        ? 'Hold launch to charge, release to fly — fill the bar for a perfect launch'
+        : hud.phase === 'charging'
+          ? 'Release to launch!'
+          : hud.phase === 'flying'
+            ? mode === 'record'
+              ? 'Steer · Block hits · Fly through gold rings for boost'
+              : 'Steer · Grab gold rings for fuel & speed'
+            : 'Flight complete';
 
   return (
     <div className="game-shell">
@@ -198,14 +293,23 @@ export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
         <button type="button" className="text-btn" onClick={onExit}>
           ← Hangar
         </button>
-        <div className="game-mode-tag">{mode === 'record' ? 'Record run' : 'Casual hop'}</div>
+        <div className="game-top-actions">
+          <button type="button" className="text-btn" onClick={togglePause}>
+            {paused ? 'Resume' : 'Pause'}
+          </button>
+          <button type="button" className="text-btn" onClick={onRestart}>
+            Restart
+          </button>
+          <div className="game-mode-tag">{mode === 'record' ? 'Record run' : 'Casual hop'}</div>
+        </div>
       </div>
 
-      <div className="game-stage">
+      <div className={`game-stage${paused ? ' is-paused' : ''}`}>
         <canvas
           ref={canvasRef}
           className="game-canvas"
           onPointerDown={(e) => {
+            if (pausedRef.current) return;
             if (hud.phase === 'ready') {
               (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
               beginCharge();
@@ -228,6 +332,7 @@ export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
             }
           }}
           onPointerMove={(e) => {
+            if (pausedRef.current) return;
             if (hud.phase !== 'flying' || e.buttons === 0) return;
             const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
             const y = e.clientY - rect.top;
@@ -247,13 +352,32 @@ export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
               <div className="fuel-fill" style={{ width: `${Math.max(0, hud.fuel) * 100}%` }} />
             </div>
           </div>
+          {hud.boosts > 0 && (
+            <div className="hud-stat">
+              <span className="hud-label">Rings</span>
+              <span className="hud-value">{hud.boosts}</span>
+            </div>
+          )}
           {mode === 'record' && (
             <div className="hud-stat">
               <span className="hud-label">Blocks</span>
               <span className="hud-value">{hud.blocks}</span>
             </div>
           )}
+          {hud.boosting && <div className="hud-boost-flag">BOOST</div>}
         </div>
+
+        {toast && (
+          <div className="game-toast" role="status">
+            {toast}
+          </div>
+        )}
+        {paused && (
+          <div className="game-pause-veil" role="status">
+            <p>Paused</p>
+            <span>P to resume · R to restart</span>
+          </div>
+        )}
       </div>
 
       <div className="game-controls">
@@ -263,6 +387,7 @@ export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
             <button
               type="button"
               className="ctl-btn ctl-primary"
+              disabled={paused}
               onPointerDown={beginCharge}
               onPointerUp={endCharge}
               onPointerLeave={endCharge}
@@ -274,6 +399,7 @@ export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
               <button
                 type="button"
                 className="ctl-btn"
+                disabled={paused}
                 onPointerDown={() => {
                   inputRef.current.up = true;
                 }}
@@ -289,6 +415,7 @@ export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
               <button
                 type="button"
                 className="ctl-btn"
+                disabled={paused}
                 onPointerDown={() => {
                   inputRef.current.down = true;
                 }}
@@ -305,7 +432,7 @@ export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
                 <button
                   type="button"
                   className="ctl-btn ctl-accent"
-                  disabled={hud.blocks <= 0}
+                  disabled={paused || hud.blocks <= 0}
                   onPointerDown={() => {
                     inputRef.current.block = true;
                   }}
@@ -321,9 +448,12 @@ export function GameCanvas({ mode, upgrades, onFinished, onExit }: Props) {
               )}
             </>
           )}
+          <button type="button" className="ctl-btn" onClick={onRestart}>
+            Restart
+          </button>
         </div>
         <p className="control-keys">
-          Keyboard: Space launch / block · W/S or ↑/↓ steer · Esc hangar
+          Space launch / block · W/S or ↑/↓ steer · R restart · P pause · Esc hangar
         </p>
       </div>
     </div>
